@@ -112,8 +112,11 @@ python neptune_query_shell.py
 ### Initial Setup Flow
 
 1. **Connection Validation** - Shell automatically validates Neptune connectivity
-2. **Language Selection** - Choose SPARQL (default), Gremlin, or OpenCypher  
-3. **Interface Selection** - Choose your approach:
+2. **Language Selection** - Choose SPARQL (default), Gremlin, or OpenCypher
+3. **Schema Configuration** - Choose your setup approach:
+   - 🔍 **Discover Database Schema** - AI automatically explores and maps your database
+   - 📄 **Use Existing Schema** - Continue with existing `schema/user_schema.json`
+4. **Interface Selection** - Choose your approach:
    - 📝 **Execute Your Query** - Write and run your own queries
    - 🤖 **Chat with AI** - Describe what you want in natural language
 
@@ -150,6 +153,81 @@ WHERE {
   ?person :name ?name .
   ?person :age ?age .
   FILTER (?age > 30)
+}
+```
+
+### AI-Powered Schema Discovery
+
+**🔍 Automatic Database Exploration**
+
+Instead of manually creating the schema file, let the AI discover your database structure automatically:
+
+```
+⚙️ Schema Configuration
+Choose your setup:
+1. 🔍 Discover Database Schema - AI explores your database structure  
+2. 📄 Use Existing Schema - Continue with schema/user_schema.json
+
+> 1
+🔍 AI Schema Discovery (SPARQL)
+AI will explore your Neptune database and generate schema/user_schema.json
+This may take a few moments for large databases...
+
+🔍 AI discovering database structure...
+✅ Schema discovery completed!
+📄 Generated schema/user_schema.json with your database structure:
+   - Found 3 entity types: Person, Company, Location
+   - Found 5 relationship types: WORKS_FOR, LIVES_IN, KNOWS  
+   - Discovered 15 properties across all entities
+   - Extracted 4 RDF namespaces for SPARQL queries
+🚀 Ready to start querying with AI assistance
+```
+
+**What the AI Discovers:**
+
+**For SPARQL Databases:**
+- **RDF Types** - All entity classes in your ontology
+- **Properties** - All predicates and their usage patterns
+- **RDF Namespaces** - URI patterns for proper query generation
+- **Relationships** - How entities connect to each other
+- **Data Types** - String, number, boolean inference from samples
+
+**For Property Graph Databases (Gremlin/OpenCypher):**
+- **Vertex Labels** - All node types and their frequency
+- **Edge Labels** - All relationship types and patterns
+- **Properties** - All vertex/edge properties and their types
+- **Schema Patterns** - How vertices connect via edges
+
+**Generated Schema Example:**
+```json
+{
+  "database_info": {
+    "name": "Social Network Database", 
+    "description": "User profiles with connections and interactions"
+  },
+  "vertices": [
+    {
+      "label": "User",
+      "description": "Individual user profile",
+      "properties": {
+        "userId": {"type": "string", "description": "Unique identifier"},
+        "name": {"type": "string", "examples": ["John Smith", "Alice Johnson"]},
+        "age": {"type": "number", "examples": [25, 34, 42]}
+      }
+    }
+  ],
+  "edges": [
+    {
+      "label": "FOLLOWS", 
+      "description": "User following relationship",
+      "from_vertex": "User",
+      "to_vertex": "User"
+    }
+  ],
+  "rdf_namespaces": {
+    "users": "http://social.network/user/",
+    "relationships": "http://social.network/relationship/"
+  }
 }
 ```
 

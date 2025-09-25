@@ -18,6 +18,7 @@ except ImportError:
 from utils.display_formatter import NeptuneDisplayFormatter
 from utils.csv_exporter import NeptuneCSVExporter
 from utils.ai_query_generator import AIQueryGenerator, QueryLanguage as AIQueryLanguage
+from utils.schema_discovery_agent import SchemaDiscoveryAgent, QueryLanguage as DiscoveryQueryLanguage
 from utils.spinner import SpinnerManager
 from neptune import NeptuneClient
 
@@ -138,6 +139,81 @@ class NeptuneQueryShell:
                 print("\n👋 Goodbye!")
                 sys.exit(0)
     
+    async def show_schema_setup_choice(self) -> bool:
+        """Show schema setup options and handle discovery if chosen.
+        
+        Returns:
+            True if user chose discovery, False if using existing schema
+        """
+        print(f"\n⚙️ Schema Configuration")
+        print("=" * 40)
+        print("Choose your setup:")
+        print("1. 🔍 Discover Database Schema - AI explores your database structure")
+        print("2. 📄 Use Existing Schema - Continue with schema/user_schema.json")
+        
+        while True:
+            try:
+                choice = input(f"\nChoose option [2]: ").strip()
+                
+                if not choice or choice == '2':
+                    print(self.formatter.format_info("Using existing schema configuration"))
+                    return False
+                elif choice == '1':
+                    return await self.run_schema_discovery()
+                else:
+                    print("❌ Please choose 1 or 2")
+                    
+            except KeyboardInterrupt:
+                print("\n👋 Goodbye!")
+                sys.exit(0)
+    
+    async def run_schema_discovery(self) -> bool:
+        """Run AI-powered schema discovery.
+        
+        Returns:
+            True if discovery completed successfully
+        """
+        print(f"\n🔍 AI Schema Discovery ({self.current_language.value})")
+        print("=" * 50)
+        print("AI will explore your Neptune database and generate schema/user_schema.json")
+        print("This may take a few moments for large databases...")
+        
+        try:
+            # Map shell language to discovery language
+            discovery_language = DiscoveryQueryLanguage.SPARQL
+            if self.current_language == QueryLanguage.GREMLIN:
+                discovery_language = DiscoveryQueryLanguage.GREMLIN
+            elif self.current_language == QueryLanguage.OPENCYPHER:
+                discovery_language = DiscoveryQueryLanguage.OPENCYPHER
+            
+            # Create schema discovery agent
+            discovery_agent = SchemaDiscoveryAgent(self.neptune_client, discovery_language)
+            
+            # Run discovery with spinner
+            async def discover():
+                return await discovery_agent.discover_schema()
+            
+            success = await SpinnerManager.with_spinner(
+                "🔍 AI discovering database structure...",
+                discover,
+                "clock"
+            )
+            
+            if success:
+                print(self.formatter.format_success("✅ Schema discovery completed!"))
+                print("📄 Generated schema/user_schema.json with your database structure")
+                print("🚀 Ready to start querying with AI assistance")
+                return True
+            else:
+                print(self.formatter.format_error("Schema discovery failed", "Discovery Error"))
+                print("📄 Falling back to existing schema configuration")
+                return False
+                
+        except Exception as e:
+            print(self.formatter.format_error(f"Discovery error: {str(e)}", "Schema Discovery"))
+            print("📄 Falling back to existing schema configuration")
+            return False
+
     def show_main_interface(self) -> None:
         """Display the main interface options."""
         print(f"\n🔍 {self.current_language.value} Query Interface")
@@ -444,7 +520,12 @@ class NeptuneQueryShell:
             self.current_language = self.select_query_language()
             print(self.formatter.format_info(f"Selected language: {self.current_language.value}"))
             
-            # 3. Main interaction loop
+            # 3. Schema setup or query interface choice
+            if await self.show_schema_setup_choice():
+                # User chose schema discovery - proceed to query interface after discovery
+                pass
+            
+            # 4. Main interaction loop
             while True:
                 try:
                     self.show_main_interface()
