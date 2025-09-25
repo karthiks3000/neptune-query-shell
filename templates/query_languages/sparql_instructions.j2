@@ -1,0 +1,85 @@
+## SPARQL Query Language Instructions
+
+### Syntax Rules
+- Use proper URI format with angle brackets: `<http://example.com/resource>`
+- String literals must use double quotes: `"string value"`
+- All property values are stored as typed literals with `^^xsd:string`
+- Boolean properties use string values: `"True"` or `"False"` (not boolean literals)
+
+### RDF Triple Patterns
+Use the namespace mappings provided in the schema:
+{% for prefix, uri in schema.rdf_namespaces.items() %}
+- {{ prefix }}: `{{ uri }}`
+{% endfor %}
+
+### Query Structure Examples
+
+**SELECT Query Pattern:**
+```sparql
+SELECT ?variable1 ?variable2 ?value
+WHERE {
+  ?variable1 <property_uri> "filter_value" .
+  ?variable1 ?property ?value .
+  OPTIONAL {
+    ?variable1 <relationship_uri> ?variable2 .
+    ?variable2 ?prop2 ?val2 .
+  }
+}
+ORDER BY ?variable1
+LIMIT 100
+```
+
+**COUNT Query Pattern:**
+```sparql
+SELECT (COUNT(?item) as ?total_count)
+WHERE {
+  ?item <property_uri> "filter_value" .
+}
+```
+
+**INSERT Query Pattern:**
+```sparql
+INSERT DATA {
+  <subject_uri> <predicate_uri> "object_value" .
+}
+```
+
+### Common Patterns for This Database
+
+**Find by standard set:**
+```sparql
+SELECT ?standard ?property ?value
+WHERE {
+  ?standard <{{ schema.rdf_namespaces.standards }}set> "SET_CODE" .
+  ?standard ?property ?value .
+}
+```
+
+**Find alignments:**
+```sparql
+SELECT ?state_standard ?national_standard
+WHERE {
+  ?state_standard <{{ schema.rdf_namespaces.relationships }}has_alignment> ?national_standard .
+  ?state_standard <{{ schema.rdf_namespaces.standards }}set> "STATE_SET" .
+  ?national_standard <{{ schema.rdf_namespaces.standards }}is_national_standard> "True" .
+}
+```
+
+### Neptune SPARQL Limitations
+- DO NOT use LIMIT in DELETE operations
+- DO NOT use broad wildcard patterns like `?s ?p ?o` in DELETE clauses
+- Prefer DELETE DATA for specific triples
+- Use DELETE WHERE only for targeted predicates
+- For bulk operations, use specific criteria in DELETE WHERE clauses
+- Always validate URIs follow the namespace patterns above
+
+### Data Type Handling
+{% for vertex in schema.vertices %}
+{% for prop_name, prop_info in vertex.properties.items() %}
+{% if prop_info.type == "string" and prop_info.enum %}
+- `{{ prop_name }}`: Use values {{ prop_info.enum | join(' or ') }}
+{% elif prop_info.note %}
+- `{{ prop_name }}`: {{ prop_info.note }}
+{% endif %}
+{% endfor %}
+{% endfor %}

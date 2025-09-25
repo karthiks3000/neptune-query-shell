@@ -1,0 +1,118 @@
+# Environment variables and secrets
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.env/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs and debugging
+*.log
+logs/
+debug.log
+error.log
+*.out
+
+# CSV exports and data files
+exports/
+*.csv
+data/
+backups/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Strands agents cache (if any)
+.strands/
+strands_cache/
+
+# AWS credentials (backup protection)
+.aws/
+aws-credentials
+credentials.json
+
+# Database backups and dumps
+*.db
+*.sqlite
+*.sql
+dumps/
+
+# Configuration overrides
+config.local.json
+settings.local.json
+
+# Documentation builds
+docs/_build/
+site/
+
+# Exports
+exports/

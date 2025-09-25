@@ -1,0 +1,107 @@
+## Gremlin Query Language Instructions
+
+### Property Graph Traversal Syntax
+Gremlin is a graph traversal language that works with vertices (V) and edges (E) in property graphs.
+
+### Basic Traversal Patterns
+
+**Start with vertices:**
+- `g.V()` - All vertices
+- `g.V().hasLabel('{{ schema.vertices[0].label }}')` - Vertices with specific label
+- `g.V().has('property', 'value')` - Vertices with property filter
+
+**Property filtering:**
+- `g.V().has('{{ schema.vertices[0].label }}', 'property_name', 'value')`
+- `g.V().has('property_name', gt(value))` - Greater than
+- `g.V().has('property_name', within('val1', 'val2'))` - Multiple values
+
+### Vertex and Edge Structure
+{% for vertex in schema.vertices %}
+**{{ vertex.label }} Vertex:**
+Properties available:
+{% for prop_name, prop_info in vertex.properties.items() %}
+  - `{{ prop_name }}`: {{ prop_info.description }}
+    {% if prop_info.examples %}Example values: {{ prop_info.examples | join(', ') }}{% endif %}
+    {% if prop_info.enum %}Allowed values: {{ prop_info.enum | join(', ') }}{% endif %}
+{% endfor %}
+
+{% endfor %}
+
+{% for edge in schema.edges %}
+**{{ edge.label }} Edge:**
+  - From: {{ edge.from_vertex }} → To: {{ edge.to_vertex }}
+  - Description: {{ edge.description }}
+  {% if edge.properties %}
+  Edge properties:
+  {% for prop_name, prop_info in edge.properties.items() %}
+    - `{{ prop_name }}`: {{ prop_info.description }}
+  {% endfor %}
+  {% endif %}
+
+{% endfor %}
+
+### Common Query Patterns
+
+**Find vertices by property:**
+```gremlin
+g.V().hasLabel('{{ schema.vertices[0].label }}').has('property_name', 'value').valueMap()
+```
+
+**Traverse relationships:**
+```gremlin
+g.V().hasLabel('{{ schema.vertices[0].label }}')
+  .has('property_name', 'value')
+  .out('{{ schema.edges[0].label }}')
+  .valueMap()
+```
+
+**Count vertices:**
+```gremlin
+g.V().hasLabel('{{ schema.vertices[0].label }}').count()
+```
+
+**Filter by multiple properties:**
+```gremlin
+g.V().hasLabel('{{ schema.vertices[0].label }}')
+  .has('prop1', 'value1')
+  .has('prop2', 'value2')
+  .valueMap()
+```
+
+**Get specific properties:**
+```gremlin
+g.V().hasLabel('{{ schema.vertices[0].label }}')
+  .values('property1', 'property2')
+```
+
+### Gremlin Step Reference
+- `.hasLabel(label)` - Filter by vertex/edge label
+- `.has(key, value)` - Property filter
+- `.out(edgeLabel)` - Traverse outgoing edges
+- `.in(edgeLabel)` - Traverse incoming edges  
+- `.both(edgeLabel)` - Traverse both directions
+- `.valueMap()` - Get all properties as map
+- `.values(key...)` - Get specific property values
+- `.count()` - Count results
+- `.limit(n)` - Limit results
+- `.order().by(key)` - Sort results
+
+### Property Graph Data Types
+{% for vertex in schema.vertices %}
+For {{ vertex.label }} vertices:
+{% for prop_name, prop_info in vertex.properties.items() %}
+{% if prop_info.enum %}
+- `{{ prop_name }}`: Must be one of {{ prop_info.enum | join(', ') }}
+{% elif prop_info.note %}
+- `{{ prop_name }}`: {{ prop_info.note }}
+{% endif %}
+{% endfor %}
+{% endfor %}
+
+### Best Practices
+- Always start traversals with `g.V()` or `g.E()`
+- Use `.hasLabel()` to filter by vertex/edge type
+- Chain multiple `.has()` steps for complex filters
+- End with `.valueMap()` to get full property maps
+- Use `.limit()` for large result sets to avoid timeouts
+- Combine `.order().by(property)` for sorted results

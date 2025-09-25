@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Neptune Database Schema Configuration",
+  "description": "Unified schema definition for Neptune database supporting SPARQL, Gremlin, and OpenCypher queries",
+  "database_info": {
+    "name": "Educational Standards Database",
+    "description": "Graph database containing educational standards, alignments, and relationships",
+    "query_languages_supported": ["SPARQL", "Gremlin", "OpenCypher"]
+  },
+  "vertices": [
+    {
+      "label": "Standard",
+      "description": "Educational standard or learning objective",
+      "properties": {
+        "guid": {
+          "type": "string",
+          "description": "Unique identifier for the standard",
+          "required": true
+        },
+        "set": {
+          "type": "string", 
+          "description": "Standard set code",
+          "examples": ["TX", "CCSS", "CA", "FL"],
+          "enum": ["TX", "CCSS", "CA", "FL", "NY", "WA"]
+        },
+        "set_name": {
+          "type": "string",
+          "description": "Full name of the standard set",
+          "examples": ["Texas Essential Knowledge and Skills", "Common Core State Standards"]
+        },
+        "label": {
+          "type": "string", 
+          "description": "Framework label",
+          "examples": ["TEKS", "CCSS", "CASS"]
+        },
+        "grade": {
+          "type": "string",
+          "description": "Grade level", 
+          "examples": ["K", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]
+        },
+        "subject": {
+          "type": "string",
+          "description": "Subject area",
+          "examples": ["Language Arts", "Mathematics", "Science", "Social Studies"]
+        },
+        "standard_text": {
+          "type": "string",
+          "description": "Full text description of the standard"
+        },
+        "is_national_standard": {
+          "type": "string",
+          "description": "Whether this is a national standard",
+          "enum": ["True", "False"],
+          "note": "Stored as string, not boolean"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "label": "has_alignment",
+      "description": "Alignment relationship between standards",
+      "from_vertex": "Standard",
+      "to_vertex": "Standard",
+      "properties": {
+        "confidence": {
+          "type": "number",
+          "description": "Alignment confidence score",
+          "range": [0.0, 1.0]
+        },
+        "alignment_type": {
+          "type": "string",
+          "description": "Type of alignment",
+          "examples": ["exact", "partial", "related"]
+        }
+      }
+    },
+    {
+      "label": "hasChild",
+      "description": "Parent-child hierarchy relationship",
+      "from_vertex": "Standard", 
+      "to_vertex": "Standard",
+      "properties": {}
+    }
+  ],
+  "rdf_namespaces": {
+    "standards": "http://example.com/standard/",
+    "relationships": "http://relationship/",
+    "subjects": "http://example.com/subject/",
+    "grades": "http://example.com/grade/"
+  },
+  "query_examples": {
+    "sparql": [
+      {
+        "description": "Find all Texas standards",
+        "query": "SELECT ?standard ?property ?value WHERE { ?standard <http://example.com/standard/set> \"TX\" . ?standard ?property ?value . }"
+      }
+    ],
+    "gremlin": [
+      {
+        "description": "Find all Texas standards", 
+        "query": "g.V().has('Standard', 'set', 'TX').valueMap()"
+      }
+    ],
+    "opencypher": [
+      {
+        "description": "Find all Texas standards",
+        "query": "MATCH (s:Standard {set: 'TX'}) RETURN s"
+      }
+    ]
+  }
+}
