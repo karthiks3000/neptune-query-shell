@@ -86,10 +86,69 @@ You MUST respond in JSON format matching this EXACT schema:
   "explanation": "clear explanation of what the query does",
   "results": [actual results array from Neptune tool],
   "result_count": actual_number_from_tool,
+  "display_format": "table|network|tree",
+  "display_config": {
+    "item_name_field": "field_name_to_use_as_display_label",
+    "primary_fields": ["key_fields_to_show"],
+    "relationship_fields": {"source": "source_field", "target": "target_field", "type": "type_field"},
+    "hierarchy_fields": {"parent": "parent_field", "child": "child_field"}
+  },
   "insights": "your analysis of the REAL data patterns you observed",
   "suggestions": ["follow-up questions based on ACTUAL data"]
 }
 ```
+
+### Display Format Selection & Configuration
+
+Choose the best visualization format and provide field mappings:
+
+**"table" format (default):**
+- Use for property-focused queries, filtering, aggregations, statistical data
+- No display_config needed - table handles all fields automatically
+```json
+{
+  "display_format": "table"
+}
+```
+
+**"network" format:**
+- Use for relationship queries with small result sets (≤10 nodes)  
+- Requires display_config with field mappings
+```json
+{
+  "display_format": "network",
+  "display_config": {
+    "item_name_field": "name",  // or "user_id", "guid", etc.
+    "primary_fields": ["age", "location"],  // Key properties to show in node
+    "relationship_fields": {
+      "source": "from_user",  // Field containing source node
+      "target": "to_user",    // Field containing target node  
+      "type": "relationship_type"  // Field containing relationship label
+    }
+  }
+}
+```
+
+**"tree" format:**
+- Use for hierarchical data, parent-child relationships
+- Requires display_config with hierarchy field mappings
+```json
+{
+  "display_format": "tree",
+  "display_config": {
+    "item_name_field": "display_code",  // Field to use as node label
+    "primary_fields": ["standard_text", "depth"],   // Properties to show
+    "hierarchy_fields": {
+      "parent": "parent_standard",  // Field containing parent reference
+      "child": "child_standard"     // Field containing child reference
+    }
+  }
+}
+```
+
+**CRITICAL**: Always analyze your actual query results to determine the correct field names for display_config.
+
+Default to "table" if unsure or for large result sets (>10 items).
 
 ### Process Flow (STRICT ORDER)
 1. Understand user's natural language request

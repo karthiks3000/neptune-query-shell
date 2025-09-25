@@ -17,6 +17,8 @@ class QueryResult(BaseModel):
     explanation: str = Field(description="Clear explanation of what the query does")
     results: List[Dict[str, Any]] = Field(description="Query results from Neptune database")
     result_count: int = Field(description="Number of results returned")
+    display_format: str = Field(default="table", description="Display format: table|network|tree")
+    display_config: Optional[Dict[str, Any]] = Field(default=None, description="Visualization configuration with field mappings")
     insights: Optional[str] = Field(default=None, description="AI insights about the results and data patterns")
     suggestions: Optional[List[str]] = Field(default=None, description="Suggestions for follow-up queries or exploration")
 
@@ -200,6 +202,8 @@ Do NOT make up or fabricate any results. Use only the actual data returned by th
                 explanation=result_data.get("explanation", ""),
                 results=result_data.get("results", []),
                 result_count=result_data.get("result_count", 0),
+                display_format=result_data.get("display_format", "table"),
+                display_config=result_data.get("display_config"),
                 insights=result_data.get("insights"),
                 suggestions=result_data.get("suggestions")
             )

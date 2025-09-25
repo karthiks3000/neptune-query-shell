@@ -316,7 +316,9 @@ class NeptuneQueryShell:
                 
                 # Cap display at 10 rows, suggest CSV for larger datasets
                 display_results = result.results[:10] if len(result.results) > 10 else result.results
-                print(self.formatter.format_sparql_results(display_results, "AI Query Results"))
+                display_format = getattr(result, 'display_format', 'table')
+                display_config = getattr(result, 'display_config', None)
+                print(self.formatter.format_sparql_results(display_results, "AI Query Results", display_format, display_config))
                 
                 if len(result.results) > 10:
                     print(f"\n📄 Showing first 10 of {len(result.results)} results. Ask me to 'export to CSV' to see all data.")

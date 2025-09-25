@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Display formatter for Neptune query results using Rich library."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 from rich.console import Console
 from rich.table import Table
+from rich.tree import Tree
+from rich.panel import Panel
+from rich.columns import Columns
 from rich.text import Text
 from rich import box
 
@@ -17,12 +20,16 @@ class NeptuneDisplayFormatter:
         self.console = Console()
        
     def format_sparql_results(self, results: List[Dict[str, Any]], 
-                            query_type: str = "Query") -> str:
-        """Format SPARQL query results as a rich table.
+                            query_type: str = "Query", 
+                            display_format: str = "table",
+                            display_config: Optional[Dict[str, Any]] = None) -> str:
+        """Format query results using specified visualization format.
         
         Args:
-            results: SPARQL query results
+            results: Query results
             query_type: Type of query for header
+            display_format: Visualization format (table|network|tree)
+            display_config: AI-provided field mappings for visualization
             
         Returns:
             Formatted results as string
@@ -30,7 +37,133 @@ class NeptuneDisplayFormatter:
         if not results:
             return f"\n📊 No results found for {query_type}."
         
-        return self._format_rich_sparql_results(results, query_type)
+        if display_format == "network":
+            return self._format_as_network(results, query_type, display_config)
+        elif display_format == "tree":
+            return self._format_as_tree(results, query_type, display_config)
+        else:  # Default to table
+            return self._format_rich_sparql_results(results, query_type)
+    
+    def _format_as_network(self, results: List[Dict[str, Any]], query_type: str, display_config: Optional[Dict[str, Any]] = None) -> str:
+        """Format results as a network graph visualization using AI-provided field mappings."""
+        if not display_config:
+            display_config = {}
+        
+        # Get field mappings from AI configuration
+        name_field = display_config.get('item_name_field')
+        primary_fields = display_config.get('primary_fields', [])
+        
+        # Create network visualization
+        panels = []
+        
+        # Create panels for each result
+        for result in results:
+            # Get display name using AI-specified field
+            if name_field and name_field in result:
+                display_name = self._clean_display_value(result[name_field])
+            else:
+                # Fallback to common name fields
+                display_name = (result.get('name') or result.get('id') or 
+                               result.get('guid') or result.get('label') or 'Node')
+                display_name = self._clean_display_value(display_name)
+            
+            # Show primary fields specified by AI
+            content_lines = []
+            if primary_fields:
+                for field in primary_fields:
+                    if field in result:
+                        clean_value = self._clean_display_value(result[field])
+                        content_lines.append(f"{field}: {clean_value}")
+            else:
+                # Fallback to showing some properties
+                for key, value in list(result.items())[:3]:
+                    if key != name_field:
+                        clean_value = self._clean_display_value(value)
+                        content_lines.append(f"{key}: {clean_value}")
+            
+            content_text = "\n".join(content_lines)
+            panel = Panel(
+                content_text,
+                title=f"🔵 {display_name}",
+                border_style="blue"
+            )
+            panels.append(panel)
+        
+        # Arrange in columns
+        output = Columns(panels, equal=True, expand=True)
+        
+        with self.console.capture() as capture:
+            self.console.print(f"\n🌐 {query_type} Network ({len(results)} items)")
+            self.console.print(output)
+        return capture.get()
+    
+    def _format_as_tree(self, results: List[Dict[str, Any]], query_type: str, display_config: Optional[Dict[str, Any]] = None) -> str:
+        """Format results as a tree/hierarchy visualization using AI-provided field mappings."""
+        if not display_config:
+            display_config = {}
+        
+        tree = Tree(f"🌳 {query_type} Hierarchy")
+        
+        # Get field mappings from AI configuration
+        name_field = display_config.get('item_name_field')
+        primary_fields = display_config.get('primary_fields', [])
+        
+        # Add each result as a tree item
+        for result in results:
+            # Get display name using AI-specified field
+            if name_field and name_field in result:
+                display_name = self._clean_display_value(result[name_field])
+            else:
+                # Fallback to common name fields
+                display_name = (result.get('name') or result.get('id') or 
+                               result.get('guid') or result.get('label') or 'Item')
+                display_name = self._clean_display_value(display_name)
+            
+            # Create branch for this item
+            branch = tree.add(f"📁 {display_name}")
+            
+            # Add primary fields as sub-items
+            if primary_fields:
+                for field in primary_fields:
+                    if field in result:
+                        clean_value = self._clean_display_value(result[field])
+                        branch.add(f"{field}: {clean_value}")
+            else:
+                # Fallback to showing some properties
+                for key, value in list(result.items())[:3]:
+                    if key != name_field:
+                        clean_value = self._clean_display_value(value)
+                        branch.add(f"{key}: {clean_value}")
+        
+        with self.console.capture() as capture:
+            self.console.print(tree)
+        return capture.get()
+    
+    def _looks_like_relationship(self, result: Dict[str, Any]) -> bool:
+        """Check if result looks like a relationship/edge."""
+        rel_keys = ['source', 'target', 'from', 'to', 'relationship', 'edge']
+        return any(key in result for key in rel_keys) or len(result) <= 3
+    
+    def _looks_like_hierarchy(self, result: Dict[str, Any]) -> bool:
+        """Check if result looks like hierarchical data."""
+        hier_keys = ['parent', 'child', 'level', 'depth']
+        return any(key in result for key in hier_keys)
+    
+    def _clean_display_value(self, value: Any) -> str:
+        """Clean value for display in graph formats."""
+        value_str = str(value) if value is not None else ""
+        
+        # Clean URIs
+        if value_str.startswith('<') and value_str.endswith('>'):
+            value_str = value_str[1:-1].split('/')[-1]
+        elif '^^xsd:' in value_str:
+            value_str = value_str.split('^^')[0].strip('"')
+        
+        # Truncate for display
+        if len(value_str) > 30:
+            value_str = value_str[:27] + "..."
+        
+        return value_str
     
     def _format_rich_sparql_results(self, results: List[Dict[str, Any]], 
                                   query_type: str) -> str:
