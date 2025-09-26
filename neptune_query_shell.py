@@ -287,16 +287,9 @@ class NeptuneQueryShell:
                 
                 self.ai_generator = AIQueryGenerator(self.neptune_client, ai_language)
             
-            # Process query with AI agent
+            # Process query with AI agent using streaming
             ai_generator = self.ai_generator
-            async def process_query():
-                return await ai_generator.process_natural_language_query(natural_query)
-            
-            result = await SpinnerManager.with_spinner(
-                "🤖 AI processing request...",
-                process_query,
-                "bouncing"
-            )
+            result = await ai_generator.process_natural_language_query(natural_query, streaming=True)
             
             # Display AI results
             print(f"\n🤖 AI Analysis Complete")
@@ -344,7 +337,7 @@ class NeptuneQueryShell:
             print(self.formatter.format_error(f"AI processing failed: {str(e)}", "AI Assistant"))
     
     async def continue_ai_conversation(self) -> None:
-        """Continue natural conversation with AI - no menu interruptions."""
+        """Continue natural conversation with AI - supports special commands."""
         while True:
             try:
                 # Simple natural input - no options or menus
@@ -352,6 +345,22 @@ class NeptuneQueryShell:
                 
                 if not follow_up:
                     break  # Empty input returns to main interface
+                
+                # Handle special commands first
+                if follow_up.startswith('/'):
+                    if follow_up == '/export':
+                        await self.export_results()
+                        continue  # Stay in conversation after export
+                    elif follow_up == '/reset':
+                        await self.database_reset()
+                        continue  # Stay in conversation after reset
+                    elif follow_up in ['/back', '/quit', '/exit']:
+                        print("👋 Ending AI conversation...")
+                        break  # Exit AI chat mode
+                    else:
+                        print(f"❌ Unknown command: {follow_up}")
+                        print("Available commands: /export (CSV export), /reset (database reset), /back (exit AI chat)")
+                        continue
                 
                 # Handle common exit phrases
                 if follow_up.lower() in ['quit', 'exit', 'back', 'done', 'stop']:

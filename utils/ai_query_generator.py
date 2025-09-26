@@ -161,11 +161,12 @@ class AIQueryGenerator(BaseNeptuneAgent):
                 "error": f"Export failed: {str(e)}"
             }
     
-    async def process_natural_language_query(self, natural_query: str) -> QueryResult:
+    async def process_natural_language_query(self, natural_query: str, streaming: bool = False) -> QueryResult:
         """Process natural language query and return structured results.
         
         Args:
             natural_query: User's natural language description
+            streaming: Whether to show AI thinking process in real-time
             
         Returns:
             Structured QueryResult with query, execution results, and insights
@@ -186,14 +187,76 @@ Do NOT make up or fabricate any results. Use only the actual data returned by th
 """
         
         try:
-            # Use regular agent conversation to force tool usage
-            agent_result = await self.agent.invoke_async(conversation_prompt)
+            if streaming:
+                return await self._process_with_streaming(conversation_prompt)
+            else:
+                # Use regular agent conversation (non-streaming)
+                agent_result = await self.agent.invoke_async(conversation_prompt)
+                
+                # Extract text from Message object
+                response_text = self._extract_message_text(agent_result)
+                
+                # Extract JSON from response
+                result_data = self._extract_json_from_response(response_text)
+                
+                # Create QueryResult from parsed JSON
+                return QueryResult(
+                    query=result_data.get("query", ""),
+                    query_language=result_data.get("query_language", self.query_language.value),
+                    explanation=result_data.get("explanation", ""),
+                    results=result_data.get("results", []),
+                    result_count=result_data.get("result_count", 0),
+                    display_format=result_data.get("display_format", "table"),
+                    display_config=result_data.get("display_config"),
+                    insights=result_data.get("insights"),
+                    suggestions=result_data.get("suggestions")
+                )
             
-            # Extract text from Message object
-            response_text = self._extract_message_text(agent_result)
+        except Exception as e:
+            # Return error result in structured format
+            return QueryResult(
+                query="",
+                query_language=self.query_language.value,
+                explanation=f"Failed to process query: {str(e)}",
+                results=[],
+                result_count=0,
+                insights="Query generation failed due to an error",
+                suggestions=["Try rephrasing your request", "Check database connectivity"]
+            )
+    
+    async def _process_with_streaming(self, conversation_prompt: str) -> QueryResult:
+        """Process query with streaming to show AI's thinking process."""
+        print("\n🤖 AI Thinking Process:")
+        print("─" * 50)
+        
+        full_response_text = ""
+        
+        try:
+            # Use streaming async iterator to show AI thinking
+            agent_stream = self.agent.stream_async(conversation_prompt)
             
-            # Extract JSON from response
-            result_data = self._extract_json_from_response(response_text)
+            async for event in agent_stream:
+                if "data" in event:
+                    # AI is generating text - show it live
+                    text_chunk = event["data"]
+                    print(text_chunk, end="", flush=True)
+                    full_response_text += text_chunk
+                    
+                elif "current_tool_use" in event and event["current_tool_use"].get("name"):
+                    # AI is using a tool - show which one
+                    tool_name = event["current_tool_use"]["name"]
+                    if tool_name == "execute_neptune_query":
+                        print(f"\n\n🔍 Executing Neptune query...")
+                    elif tool_name == "export_to_csv":
+                        print(f"\n\n💾 Exporting to CSV...")
+                    else:
+                        print(f"\n\n🔧 Using tool: {tool_name}")
+                        
+            print("\n" + "─" * 50)
+            print("🤖 Processing complete!\n")
+            
+            # Extract JSON from the full response
+            result_data = self._extract_json_from_response(full_response_text)
             
             # Create QueryResult from parsed JSON
             return QueryResult(
@@ -209,15 +272,16 @@ Do NOT make up or fabricate any results. Use only the actual data returned by th
             )
             
         except Exception as e:
-            # Return error result in structured format
+            print(f"\n❌ Streaming failed: {str(e)}")
+            # Return error result
             return QueryResult(
                 query="",
                 query_language=self.query_language.value,
-                explanation=f"Failed to process query: {str(e)}",
+                explanation=f"Failed to process streaming query: {str(e)}",
                 results=[],
                 result_count=0,
-                insights="Query generation failed due to an error",
-                suggestions=["Try rephrasing your request", "Check database connectivity"]
+                insights="Streaming query generation failed",
+                suggestions=["Try again or switch to non-streaming mode"]
             )
     
     def get_schema_info(self) -> Dict[str, Any]:

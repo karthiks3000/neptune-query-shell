@@ -72,13 +72,13 @@ class NeptuneDisplayFormatter:
             if primary_fields:
                 for field in primary_fields:
                     if field in result:
-                        clean_value = self._clean_display_value(result[field])
+                        clean_value = self._clean_display_value(result[field], "network")
                         content_lines.append(f"{field}: {clean_value}")
             else:
                 # Fallback to showing some properties
                 for key, value in list(result.items())[:3]:
                     if key != name_field:
-                        clean_value = self._clean_display_value(value)
+                        clean_value = self._clean_display_value(value, "network")
                         content_lines.append(f"{key}: {clean_value}")
             
             content_text = "\n".join(content_lines)
@@ -126,13 +126,13 @@ class NeptuneDisplayFormatter:
             if primary_fields:
                 for field in primary_fields:
                     if field in result:
-                        clean_value = self._clean_display_value(result[field])
+                        clean_value = self._clean_display_value(result[field], "tree")
                         branch.add(f"{field}: {clean_value}")
             else:
                 # Fallback to showing some properties
                 for key, value in list(result.items())[:3]:
                     if key != name_field:
-                        clean_value = self._clean_display_value(value)
+                        clean_value = self._clean_display_value(value, "tree")
                         branch.add(f"{key}: {clean_value}")
         
         with self.console.capture() as capture:
@@ -149,8 +149,8 @@ class NeptuneDisplayFormatter:
         hier_keys = ['parent', 'child', 'level', 'depth']
         return any(key in result for key in hier_keys)
     
-    def _clean_display_value(self, value: Any) -> str:
-        """Clean value for display in graph formats."""
+    def _clean_display_value(self, value: Any, format_type: str = "tree") -> str:
+        """Clean value for display in graph formats with format-specific limits."""
         value_str = str(value) if value is not None else ""
         
         # Clean URIs
@@ -159,9 +159,17 @@ class NeptuneDisplayFormatter:
         elif '^^xsd:' in value_str:
             value_str = value_str.split('^^')[0].strip('"')
         
-        # Truncate for display
-        if len(value_str) > 30:
-            value_str = value_str[:27] + "..."
+        # Format-specific truncation limits
+        if format_type == "tree":
+            max_length = 100  # Tree has more vertical space
+        elif format_type == "network":
+            max_length = 60   # Panels have medium space
+        else:  # table
+            max_length = 30   # Table columns are constrained
+        
+        # Truncate if needed
+        if len(value_str) > max_length:
+            value_str = value_str[:max_length - 3] + "..."
         
         return value_str
     
