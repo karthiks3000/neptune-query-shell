@@ -15,19 +15,13 @@ try:
 except ImportError:
     print("⚠️  python-dotenv not available. Make sure environment variables are set.")
 
-from utils.display_formatter import NeptuneDisplayFormatter
-from utils.csv_exporter import NeptuneCSVExporter
-from utils.ai_query_generator import AIQueryGenerator, QueryLanguage as AIQueryLanguage
-from utils.schema_discovery_agent import SchemaDiscoveryAgent, QueryLanguage as DiscoveryQueryLanguage
+from display.formatter import NeptuneDisplayFormatter
+from agents.ai_query_generator import AIQueryGenerator
+from agents.schema_discovery_agent import SchemaDiscoveryAgent
+from core.enums import QueryLanguage
+from core.services.query_execution_service import QueryExecutionService
 from utils.spinner import SpinnerManager
 from neptune import NeptuneClient
-
-
-class QueryLanguage(Enum):
-    """Supported query languages."""
-    SPARQL = "SPARQL"
-    GREMLIN = "Gremlin"
-    OPENCYPHER = "OpenCypher"
 
 
 class NeptuneQueryShell:
@@ -36,13 +30,11 @@ class NeptuneQueryShell:
     def __init__(self):
         """Initialize the Neptune query shell."""
         self.formatter = NeptuneDisplayFormatter()
-        self.csv_exporter = NeptuneCSVExporter()
+        self.query_service: Optional[QueryExecutionService] = None
         self.ai_generator: Optional[AIQueryGenerator] = None
         self.neptune_client: Optional[NeptuneClient] = None
         self.connected = False
         self.current_language = QueryLanguage.SPARQL
-        self.last_results: Optional[List[Dict[str, Any]]] = None
-        self.last_query_type = "query"
     
     def print_banner(self) -> None:
         """Display application banner."""
@@ -96,6 +88,10 @@ class NeptuneQueryShell:
                 await self.neptune_client.execute_sparql(test_query)
                 
                 self.connected = True
+                
+                # Initialize shared query execution service
+                self.query_service = QueryExecutionService(self.neptune_client)
+                
                 print(self.formatter.format_info("✅ Connection validated successfully!"))
                 return True
                 
@@ -179,15 +175,8 @@ class NeptuneQueryShell:
         print("This may take a few moments for large databases...")
         
         try:
-            # Map shell language to discovery language
-            discovery_language = DiscoveryQueryLanguage.SPARQL
-            if self.current_language == QueryLanguage.GREMLIN:
-                discovery_language = DiscoveryQueryLanguage.GREMLIN
-            elif self.current_language == QueryLanguage.OPENCYPHER:
-                discovery_language = DiscoveryQueryLanguage.OPENCYPHER
-            
-            # Create schema discovery agent
-            discovery_agent = SchemaDiscoveryAgent(self.neptune_client, discovery_language)
+            # Create schema discovery agent (using consolidated QueryLanguage enum)
+            discovery_agent = SchemaDiscoveryAgent(self.neptune_client, self.current_language)
             
             # Run discovery with spinner
             async def discover():
@@ -275,19 +264,17 @@ class NeptuneQueryShell:
         """Process natural language query through AI with Neptune execution."""
         try:
             # Initialize AI generator if needed
-            if not self.ai_generator:
+            if not self.ai_generator and self.query_service:
                 print(self.formatter.format_info("Initializing AI assistant..."))
                 
-                # Map shell language to AI generator language
-                ai_language = AIQueryLanguage.SPARQL
-                if self.current_language == QueryLanguage.GREMLIN:
-                    ai_language = AIQueryLanguage.GREMLIN
-                elif self.current_language == QueryLanguage.OPENCYPHER:
-                    ai_language = AIQueryLanguage.OPENCYPHER
-                
-                self.ai_generator = AIQueryGenerator(self.neptune_client, ai_language)
+                # Use shared QueryExecutionService
+                self.ai_generator = AIQueryGenerator(self.query_service, self.current_language)
             
             # Process query with AI agent using streaming
+            if not self.ai_generator:
+                print(self.formatter.format_error("AI generator not initialized", "AI Assistant"))
+                return
+            
             ai_generator = self.ai_generator
             result = await ai_generator.process_natural_language_query(natural_query, streaming=True)
             
@@ -374,29 +361,39 @@ class NeptuneQueryShell:
                 break
     
     async def execute_query(self, query: str, query_source: str) -> None:
-        """Execute a query and display results."""
-        if not self.neptune_client:
-            print(self.formatter.format_error("Neptune client not available", "Query Execution"))
+        """Execute a query and display results using shared service."""
+        if not self.query_service:
+            print(self.formatter.format_error("Query service not available", "Query Execution"))
             return
         
         try:
-            # Execute query with spinner
-            neptune_client = self.neptune_client
+            # Execute query using shared service with spinner
+            query_service = self.query_service
+            if not query_service:
+                raise ValueError("Query service not available")
+            
+            # Capture current language for async function
+            current_lang = self.current_language
+                
             async def run_query():
-                if self.current_language == QueryLanguage.SPARQL:
-                    return await neptune_client.execute_sparql(query)
-                else:
-                    # Placeholder for future languages
-                    raise NotImplementedError(f"{self.current_language.value} not yet implemented")
+                return await query_service.execute_query(
+                    query, 
+                    current_lang, 
+                    for_ai_context=False  # Don't truncate for shell display
+                )
             
             result = await SpinnerManager.query_execution(run_query)
             
-            if 'results' in result and result['results']:
-                self.last_results = result['results']
-                self.last_query_type = query_source.lower().replace(' ', '_')
-                
-                # Display results (formatter handles its own header)
+            if result['success'] and result['results']:
+                # Display all results (service handles complete dataset)
                 print(self.formatter.format_sparql_results(result['results'], query_source))
+                
+                # Show summary
+                total_results = result['result_count']
+                displayed_results = len(result['results'])
+                
+                if total_results > displayed_results:
+                    print(f"\n📄 Showing {displayed_results} of {total_results} results. Use /export to save all data.")
                 
                 # Post-query options
                 await self.show_post_query_options()
@@ -407,11 +404,16 @@ class NeptuneQueryShell:
             print(self.formatter.format_error(f"Query execution failed: {str(e)}", query_source))
     
     async def show_post_query_options(self) -> None:
-        """Show options after successful query execution."""
-        if not self.last_results:
+        """Show options after successful query execution using shared service."""
+        if not self.query_service:
             return
         
-        print(f"\n📊 Found {len(self.last_results)} result(s)")
+        # Get result summary from shared service
+        summary = self.query_service.get_last_results_summary()
+        if not summary['has_results']:
+            return
+        
+        print(f"\n📊 Found {summary['result_count']} result(s)")
         
         while True:
             choice = input("\n[E]xport CSV, [N]ew Query, [M]ain Menu, [Enter] to continue: ").strip().upper()
@@ -427,33 +429,33 @@ class NeptuneQueryShell:
                 print("❌ Please choose E, N, M, or press Enter")
     
     async def export_results(self) -> None:
-        """Export last query results to CSV."""
-        if not self.last_results:
+        """Export last query results to CSV using shared service."""
+        if not self.query_service:
+            print("❌ No query service available")
+            return
+        
+        # Check if we have results to export
+        summary = self.query_service.get_last_results_summary()
+        if not summary['has_results']:
             print("❌ No results to export")
             return
         
         try:
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{self.last_query_type}_{timestamp}.csv"
-            
-            # Ensure last_results is not None for type checker
-            results = self.last_results
+            # Use shared service for export (always exports complete dataset)
+            query_service = self.query_service
+            if not query_service:
+                raise ValueError("Query service not available")
+                
             async def do_export():
-                return self.csv_exporter.export_results(
-                    results,
-                    self.last_query_type,
-                    filename
-                )
+                return query_service.export_last_results("shell_query")
             
-            filepath = await SpinnerManager.csv_export(do_export, filename)
+            export_result = await SpinnerManager.csv_export(do_export, "shell_export")
             
-            print(self.formatter.format_info(f"✅ Results exported to: {filepath}"))
-            
-            # Show export info
-            export_info = self.csv_exporter.get_export_info(filename)
-            if export_info:
-                print(f"📊 Exported {export_info['row_count']} rows ({export_info['size_mb']} MB)")
+            if export_result['success']:
+                print(self.formatter.format_info(f"✅ Results exported to: {export_result['filepath']}"))
+                print(f"📊 Exported {export_result['record_count']} rows ({export_result['file_size_mb']} MB)")
+            else:
+                print(self.formatter.format_error(f"Export failed: {export_result['error']}", "CSV Export"))
                 
         except Exception as e:
             print(self.formatter.format_error(f"Export failed: {str(e)}", "CSV Export"))
@@ -499,7 +501,9 @@ class NeptuneQueryShell:
             
             if result:
                 print(self.formatter.format_info("✅ Database reset completed"))
-                self.last_results = None
+                # Clear results from shared service
+                if self.query_service:
+                    self.query_service.clear_results()
             else:
                 print(self.formatter.format_error("Reset failed", "Database Reset"))
                 
