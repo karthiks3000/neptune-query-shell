@@ -30,9 +30,14 @@ class ConnectionManager:
         self.session = None
         self.sparql_endpoint = None
 
-        # Track if we own the session (need to close it) or if it was provided
-        self._owns_session = session is None
-        self.client_session = session
+        # Session ownership: we own it if we create it, otherwise caller owns it
+        if session is None:
+            self.client_session = None
+            self._owns_session = True
+        else:
+            self.client_session = session
+            self._owns_session = False
+            
         self.logger = logger.bind(context="NeptuneConnectionManager")
 
     async def init_sparql(self) -> None:
@@ -238,10 +243,23 @@ class ConnectionManager:
                         )
                         raise
 
+                except aiohttp.ClientConnectorError as e:
+                    # Connection errors should be retried
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        self.logger.warning(
+                            f"Connection error: {str(e)}. Retry {retry_count}/{max_retries-1}..."
+                        )
+                    else:
+                        self.logger.error(
+                            f"Connection failed after {max_retries} attempts: {str(e)}"
+                        )
+                        raise
+
                 except Exception as e:
-                    # For non-timeout errors, don't retry
+                    # For other errors, don't retry but log them properly
                     self.logger.error(
-                        f"Request failed with non-timeout error: {str(e)}"
+                        f"Request failed with non-retryable error: {str(e)}"
                     )
                     raise
 
@@ -260,8 +278,8 @@ class ConnectionManager:
 
             raise Exception(f"Neptune query failed: {response_text}") from e
         
-        # This should never be reached, but ensures all code paths return a value
-        return {"status": "error", "message": "Unexpected code path reached"}
+        # This should never be reached - if we get here, something is seriously wrong
+        raise Exception("Unexpected code path reached in execute_sparql - this indicates a bug")
 
     async def initiate_database_reset(self) -> str:
         """Initiate database reset and get reset token.

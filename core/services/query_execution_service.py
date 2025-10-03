@@ -17,20 +17,33 @@ class QueryExecutionService:
     - Managing complete result storage for consistent exports
     - Handling result truncation for AI context management
     - Offering unified CSV export functionality
+    
+    Memory Management:
+    - Limits result storage to prevent memory issues with large datasets
+    - Provides warnings when approaching memory limits
+    - Automatically truncates results above safe thresholds
     """
     
-    def __init__(self, neptune_client):
+    # Memory management constants
+    DEFAULT_MAX_RESULTS = 50000  # Maximum results to store in memory
+    WARNING_THRESHOLD = 10000    # Warn user at this threshold
+    MEMORY_SAFE_LIMIT = 100000   # Hard limit for memory safety
+    
+    def __init__(self, neptune_client, max_results: int = DEFAULT_MAX_RESULTS):
         """Initialize the query execution service.
         
         Args:
             neptune_client: NeptuneClient instance for query execution
+            max_results: Maximum number of results to store in memory (default: 50,000)
         """
         self.neptune_client = neptune_client
         self.csv_exporter = NeptuneCSVExporter()
+        self.max_results = min(max_results, self.MEMORY_SAFE_LIMIT)  # Enforce hard limit
         
         # Centralized result storage - single source of truth
         self._last_complete_results: List[Dict[str, Any]] = []
         self._last_query_metadata: Dict[str, Any] = {}
+        self._result_truncated_due_to_memory = False
     
     async def execute_query(self, 
                            query: str, 
@@ -67,14 +80,24 @@ class QueryExecutionService:
             
             # Extract complete results
             complete_results = raw_result.get('results', [])
+            total_result_count = len(complete_results)
             
-            # Store complete results and metadata (single source of truth)
+            # Apply memory management limits
+            memory_truncated = False
+            if total_result_count > self.max_results:
+                complete_results = complete_results[:self.max_results]
+                memory_truncated = True
+                
+            # Store results and metadata (single source of truth)
             self._last_complete_results = complete_results
+            self._result_truncated_due_to_memory = memory_truncated
             self._last_query_metadata = {
                 "query": query,
                 "query_language": query_language.value,
                 "timestamp": TimestampUtils.get_timestamp(),
-                "result_count": len(complete_results),
+                "total_result_count": total_result_count,  # Original count from Neptune
+                "stored_result_count": len(complete_results),  # What we actually stored
+                "memory_truncated": memory_truncated,
                 "execution_status": raw_result.get("status", "success"),
                 "execution_code": raw_result.get("code", 200)
             }
@@ -83,20 +106,22 @@ class QueryExecutionService:
             if for_ai_context and len(complete_results) > max_ai_results:
                 # Return truncated results for AI to prevent context overflow
                 returned_results = complete_results[:max_ai_results]
-                is_truncated = True
+                ai_truncated = True
             else:
-                # Return complete results
+                # Return complete results (up to memory limit)
                 returned_results = complete_results
-                is_truncated = False
+                ai_truncated = False
             
             return {
                 "success": True,
                 "query": query,
                 "query_language": query_language.value,
                 "results": returned_results,
-                "result_count": len(complete_results),  # Total count
+                "result_count": total_result_count,  # Original count from Neptune
                 "returned_count": len(returned_results),  # Actually returned
-                "truncated": is_truncated,
+                "truncated": ai_truncated or memory_truncated,  # Either AI or memory truncation
+                "memory_truncated": memory_truncated,
+                "memory_limit": self.max_results,
                 "execution_metadata": {
                     "status": raw_result.get("status", "success"),
                     "code": raw_result.get("code", 200)
@@ -106,10 +131,14 @@ class QueryExecutionService:
         except Exception as e:
             # Store empty results on error
             self._last_complete_results = []
+            self._result_truncated_due_to_memory = False
             self._last_query_metadata = {
                 "query": query,
                 "query_language": query_language.value,
                 "timestamp": TimestampUtils.get_timestamp(),
+                "total_result_count": 0,
+                "stored_result_count": 0,
+                "memory_truncated": False,
                 "error": str(e)
             }
             
@@ -194,17 +223,25 @@ class QueryExecutionService:
         """Get summary information about the last query results.
         
         Returns:
-            Summary including result count, sample data, etc.
+            Summary including result count, sample data, memory status, etc.
         """
         if not self._last_complete_results:
             return {
                 "has_results": False,
-                "result_count": 0
+                "result_count": 0,
+                "memory_truncated": False
             }
+        
+        metadata = self._last_query_metadata
+        total_count = metadata.get("total_result_count", len(self._last_complete_results))
+        stored_count = len(self._last_complete_results)
         
         return {
             "has_results": True,
-            "result_count": len(self._last_complete_results),
+            "result_count": stored_count,  # What we have in memory
+            "total_result_count": total_count,  # What Neptune actually returned
+            "memory_truncated": metadata.get("memory_truncated", False),
+            "memory_limit": self.max_results,
             "sample_keys": list(self._last_complete_results[0].keys()) if self._last_complete_results else [],
             "query_info": self._last_query_metadata
         }
@@ -216,3 +253,22 @@ class QueryExecutionService:
         """
         self._last_complete_results = []
         self._last_query_metadata = {}
+        self._result_truncated_due_to_memory = False
+    
+    def get_memory_status(self) -> Dict[str, Any]:
+        """Get current memory usage status.
+        
+        Returns:
+            Dictionary with memory usage information
+        """
+        current_count = len(self._last_complete_results)
+        usage_percent = (current_count / self.max_results) * 100 if self.max_results > 0 else 0
+        
+        return {
+            "current_result_count": current_count,
+            "max_results_limit": self.max_results,
+            "usage_percent": round(usage_percent, 1),
+            "is_near_limit": current_count > self.WARNING_THRESHOLD,
+            "is_truncated": self._result_truncated_due_to_memory,
+            "warning_threshold": self.WARNING_THRESHOLD
+        }

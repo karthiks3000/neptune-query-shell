@@ -291,9 +291,6 @@ class NeptuneQueryShell:
             
             # Display Neptune results if available
             if result.results:
-                self.last_results = result.results
-                self.last_query_type = "ai_generated_query"
-                
                 # Cap display at 10 rows, suggest CSV for larger datasets
                 display_results = result.results[:10] if len(result.results) > 10 else result.results
                 display_format = getattr(result, 'display_format', 'table')
@@ -367,13 +364,9 @@ class NeptuneQueryShell:
             return
         
         try:
-            # Execute query using shared service with spinner
-            query_service = self.query_service
-            if not query_service:
-                raise ValueError("Query service not available")
-            
             # Capture current language for async function
             current_lang = self.current_language
+            query_service = self.query_service  # Capture for type safety
                 
             async def run_query():
                 return await query_service.execute_query(
@@ -388,12 +381,20 @@ class NeptuneQueryShell:
                 # Display all results (service handles complete dataset)
                 print(self.formatter.format_sparql_results(result['results'], query_source))
                 
-                # Show summary
+                # Show summary with memory management info
                 total_results = result['result_count']
                 displayed_results = len(result['results'])
                 
                 if total_results > displayed_results:
                     print(f"\n📄 Showing {displayed_results} of {total_results} results. Use /export to save all data.")
+                
+                # Show memory warnings if applicable
+                if result.get('memory_truncated', False):
+                    memory_limit = result.get('memory_limit', 'unknown')
+                    print(self.formatter.format_warning(
+                        f"⚠️  Large dataset detected: Results truncated to {memory_limit:,} records for memory safety. "
+                        f"Original query returned {total_results:,} results. Use /export to save available data."
+                    ))
                 
                 # Post-query options
                 await self.show_post_query_options()
@@ -413,7 +414,14 @@ class NeptuneQueryShell:
         if not summary['has_results']:
             return
         
-        print(f"\n📊 Found {summary['result_count']} result(s)")
+        # Display result summary with memory info
+        stored_count = summary['result_count']
+        total_count = summary.get('total_result_count', stored_count)
+        
+        if summary.get('memory_truncated', False):
+            print(f"\n📊 Stored {stored_count:,} of {total_count:,} results (memory limit: {summary.get('memory_limit', 'unknown'):,})")
+        else:
+            print(f"\n📊 Found {stored_count:,} result(s)")
         
         while True:
             choice = input("\n[E]xport CSV, [N]ew Query, [M]ain Menu, [Enter] to continue: ").strip().upper()
@@ -434,18 +442,16 @@ class NeptuneQueryShell:
             print("❌ No query service available")
             return
         
+        query_service = self.query_service  # Capture for type safety
+        
         # Check if we have results to export
-        summary = self.query_service.get_last_results_summary()
+        summary = query_service.get_last_results_summary()
         if not summary['has_results']:
             print("❌ No results to export")
             return
         
         try:
             # Use shared service for export (always exports complete dataset)
-            query_service = self.query_service
-            if not query_service:
-                raise ValueError("Query service not available")
-                
             async def do_export():
                 return query_service.export_last_results("shell_query")
             
