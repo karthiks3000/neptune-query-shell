@@ -54,6 +54,41 @@ class NeptuneClient:
         
         return await self.connection_manager.execute_sparql(query, params)
     
+    async def execute_gremlin(self, query: str) -> Dict[str, Any]:
+        """Execute Gremlin query against Neptune.
+        
+        Args:
+            query: Gremlin query string
+            
+        Returns:
+            Query results dictionary
+            
+        Raises:
+            Exception: If connection not initialized or query fails
+        """
+        if not self._initialized:
+            raise Exception("Neptune client not initialized. Call init() first.")
+        
+        return await self.connection_manager.execute_gremlin(query)
+    
+    async def execute_opencypher(self, query: str, params: Optional[str] = None) -> Dict[str, Any]:
+        """Execute OpenCypher query against Neptune.
+        
+        Args:
+            query: OpenCypher query string
+            params: Optional query parameters as JSON string
+            
+        Returns:
+            Query results dictionary
+            
+        Raises:
+            Exception: If connection not initialized or query fails
+        """
+        if not self._initialized:
+            raise Exception("Neptune client not initialized. Call init() first.")
+        
+        return await self.connection_manager.execute_opencypher(query, params)
+    
     async def reset_database(self) -> bool:
         """Reset the entire Neptune database.
         
@@ -107,7 +142,9 @@ class NeptuneClient:
             'region': self.region,
             'port': self.port,
             'initialized': self._initialized,
-            'sparql_endpoint': f"https://{self.endpoint}:{self.port}/sparql"
+            'sparql_endpoint': f"https://{self.endpoint}:{self.port}/sparql",
+            'gremlin_endpoint': f"https://{self.endpoint}:{self.port}/gremlin",
+            'opencypher_endpoint': f"https://{self.endpoint}:{self.port}/opencypher"
         }
     
     async def test_connection(self) -> bool:

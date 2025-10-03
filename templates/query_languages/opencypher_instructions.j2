@@ -126,10 +126,48 @@ RETURN r
 - Relationship direction matters: `->` vs `<-`
 - Use `WHERE` clause for complex filtering
 
-### Best Practices
-- Start with `MATCH` patterns that define graph structure
-- Use specific node labels rather than matching all nodes
-- Apply `WHERE` filters to reduce result sets
-- Use meaningful variable names in patterns
-- Add `LIMIT` clauses for potentially large results
-- Combine `ORDER BY` with `LIMIT` for consistent pagination
+### Result Format
+OpenCypher results are already in tabular format, matching your RETURN clause:
+`{"results": [{"field1": value1, "field2": value2}, ...]}`
+
+Field names in results match your RETURN clause aliases. No additional transformation needed.
+
+### Parameterized Queries
+OpenCypher supports parameterized queries for safety and performance:
+- Use `$param` syntax in queries for parameter placeholders
+- Parameters help prevent injection and improve query plan caching
+- Example: `MATCH (n:Person {name: $userName}) RETURN n`
+- Parameters passed separately to the query execution
+
+### Best Practices for Neptune OpenCypher
+- **Pattern Matching:**
+  - Start with `MATCH` patterns that define graph structure
+  - Use specific node labels: `MATCH (n:Person)` not `MATCH (n)`
+  - Apply `WHERE` filters early to reduce result sets
+  - Use meaningful variable names in patterns
+
+- **Performance Optimization:**
+  - Add `LIMIT` clauses for potentially large results
+  - Combine `ORDER BY` with `LIMIT` for consistent pagination
+  - Prefer pattern matching over procedural WHERE logic
+  - Use indexes by filtering on indexed properties
+  - Apply most restrictive filters first
+
+- **Query Structure:**
+  - Use specific node labels and relationship types
+  - Leverage OPTIONAL MATCH for optional patterns
+  - Use WITH clauses to pipe results between query parts
+  - Prefer RETURN aliases for clear field names
+
+- **Data Access:**
+  - Use property access syntax: `n.propertyName`
+  - Leverage pattern comprehensions for complex logic
+  - Use CASE expressions for conditional values
+  - Apply functions like `count()`, `collect()`, `avg()` appropriately
+
+### Common Performance Patterns
+- **Restrictive start:** Begin with most selective pattern
+- **Early filtering:** Apply WHERE conditions as soon as possible
+- **Index usage:** Filter on properties that have indexes
+- **Limit early:** Use LIMIT to cap intermediate results
+- **Property existence:** Check property existence with `WHERE EXISTS(n.property)`

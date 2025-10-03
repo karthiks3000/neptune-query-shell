@@ -123,11 +123,9 @@ class NeptuneQueryShell:
                 if not choice or choice == '1':
                     return QueryLanguage.SPARQL
                 elif choice == '2':
-                    print(self.formatter.format_info("⚠️  Gremlin support coming in Phase 2"))
-                    return QueryLanguage.SPARQL  # Fallback for now
+                    return QueryLanguage.GREMLIN
                 elif choice == '3':
-                    print(self.formatter.format_info("⚠️  OpenCypher support coming in Phase 2"))
-                    return QueryLanguage.SPARQL  # Fallback for now
+                    return QueryLanguage.OPENCYPHER
                 else:
                     print("❌ Please choose 1, 2, or 3")
                     

@@ -98,10 +98,32 @@ For {{ vertex.label }} vertices:
 {% endfor %}
 {% endfor %}
 
-### Best Practices
+### Result Format & GraphSON
+Neptune returns Gremlin results in GraphSON format, which is automatically transformed to standard format for you:
+
+**Vertices:** `{id, label, type: "vertex", property1: value1, property2: value2, ...}`
+**Edges:** `{id, label, type: "edge", inV, outV, property1: value1, ...}`
+**Simple values:** `{value: result}`
+
+Focus on writing correct Gremlin traversals - result transformation is handled automatically.
+
+### Best Practices for Neptune Gremlin
 - Always start traversals with `g.V()` or `g.E()`
-- Use `.hasLabel()` to filter by vertex/edge type
+- Use `.hasLabel()` to filter by vertex/edge type early in traversal
 - Chain multiple `.has()` steps for complex filters
-- End with `.valueMap()` to get full property maps
-- Use `.limit()` for large result sets to avoid timeouts
-- Combine `.order().by(property)` for sorted results
+- Use `.valueMap()` to get all properties as a map
+- Use `.values(key...)` to get specific property values only
+- Use `.by()` modulation for specific property selection in steps like `.order().by(property)`
+- Prefer `.has()` for filtering over `.filter()` when possible (better optimization)
+- Use `.limit()` early in traversals for large datasets to prevent timeouts
+- Chain steps efficiently to minimize intermediate results
+- For complex traversals, break into multiple steps for readability
+- Use `.dedup()` to remove duplicate results when needed
+- Leverage `.where()` for complex conditional logic
+
+### Performance Tips
+- Apply filters as early as possible in the traversal
+- Use specific vertex/edge labels rather than traversing all elements
+- Limit result sets with `.limit()` before expensive operations
+- Use indexes by filtering on indexed properties with `.has()`
+- Avoid deep traversals without proper filtering

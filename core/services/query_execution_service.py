@@ -66,15 +66,9 @@ class QueryExecutionService:
             if query_language == QueryLanguage.SPARQL:
                 raw_result = await self.neptune_client.execute_sparql(query)
             elif query_language == QueryLanguage.GREMLIN:
-                if hasattr(self.neptune_client, 'execute_gremlin'):
-                    raw_result = await self.neptune_client.execute_gremlin(query)
-                else:
-                    raise NotImplementedError("Gremlin support not yet implemented")
+                raw_result = await self.neptune_client.execute_gremlin(query)
             elif query_language == QueryLanguage.OPENCYPHER:
-                if hasattr(self.neptune_client, 'execute_opencypher'):
-                    raw_result = await self.neptune_client.execute_opencypher(query)
-                else:
-                    raise NotImplementedError("OpenCypher support not yet implemented")
+                raw_result = await self.neptune_client.execute_opencypher(query)
             else:
                 raise ValueError(f"Unsupported query language: {query_language}")
             

@@ -73,6 +73,12 @@ WHERE {
 - For bulk operations, use specific criteria in DELETE WHERE clauses
 - Always validate URIs follow the namespace patterns above
 
+### Result Format
+SPARQL results are automatically transformed from W3C format to standard format:
+`{"results": [{"var1": "value1", "var2": "value2"}, ...]}`
+
+Variable names from your SELECT clause become the field names in results.
+
 ### Data Type Handling
 {% for vertex in schema.vertices %}
 {% for prop_name, prop_info in vertex.properties.items() %}
@@ -83,3 +89,24 @@ WHERE {
 {% endif %}
 {% endfor %}
 {% endfor %}
+
+### Best Practices for Neptune SPARQL
+- **Query Structure:**
+  - Start with specific patterns rather than `?s ?p ?o`
+  - Use LIMIT to control result size, especially during exploration
+  - Filter on typed properties when possible
+  - Use proper URI patterns with defined namespaces
+  - Combine multiple patterns for complex queries
+
+- **Performance Optimization:**
+  - Apply FILTER conditions to reduce result sets
+  - Order results for consistent output using ORDER BY
+  - Use OPTIONAL patterns judiciously (can be expensive)
+  - Prefer specific predicates over variable predicates
+  - Use ASK queries for existence checks instead of COUNT
+
+- **URI and Namespace Usage:**
+  - Always use proper namespace prefixes
+  - Construct URIs following schema patterns
+  - Escape special characters in literals properly
+  - Use typed literals with appropriate XSD types
