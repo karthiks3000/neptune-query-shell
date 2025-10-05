@@ -66,8 +66,36 @@ aws configure
 ### 4. Enable Bedrock Model Access
 
 1. Go to AWS Console → Amazon Bedrock → Model Access
-2. Enable access to **Claude 4 Sonnet** model
+2. Enable access to your chosen model (e.g., **Claude 4 Sonnet** or **Nova Premier**)
 3. Wait for approval (usually immediate for Claude models)
+
+### 5. Optional: Model-Specific Configuration
+
+Some models support additional request fields for extended features. Configure via environment variables:
+
+#### Claude Sonnet 4.5 with 1M Context Window (Beta)
+```bash
+BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
+BEDROCK_ADDITIONAL_REQUEST_FIELDS='{"anthropic_beta": ["context-management-2025-06-27"]}'
+```
+
+#### Claude Sonnet 4 with 1M Context Window (Beta)
+```bash
+BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-20250514-v1:0
+BEDROCK_ADDITIONAL_REQUEST_FIELDS='{"anthropic_beta": ["context-1m-2025-08-07"]}'
+```
+
+#### Amazon Nova Premier (No Special Configuration)
+```bash
+BEDROCK_MODEL_ID=us.amazon.nova-premier-v1:0
+# No BEDROCK_ADDITIONAL_REQUEST_FIELDS needed
+```
+
+#### Standard Models (200K Context - Default)
+```bash
+# Any model without BEDROCK_ADDITIONAL_REQUEST_FIELDS uses standard configuration
+BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-20250514-v1:0
+```
 
 ### 5. Customize Your Database Schema
 

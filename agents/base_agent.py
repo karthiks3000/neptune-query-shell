@@ -11,9 +11,11 @@ from typing import Dict, List, Any, Optional
 from jinja2 import Environment, FileSystemLoader
 from strands import Agent, tool
 from strands.models import BedrockModel
+from botocore.config import Config as BotocoreConfig
 
 from core.enums import QueryLanguage
 from utils.value_cleaner import TimestampUtils
+
 
 
 class BaseNeptuneAgent(ABC):
@@ -97,11 +99,23 @@ class BaseNeptuneAgent(ABC):
         model_id = os.getenv('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-4-20250514-v1:0')
         region = os.getenv('NEPTUNE_REGION', 'us-east-1')
         
+        # Configure boto client with extended timeout for Claude 4+ models
+        boto_config = BotocoreConfig(
+            read_timeout=3600,  # 60 minutes for Claude 4+ models
+            connect_timeout=60,
+            retries={'max_attempts': 3}
+        )
+        
+        # Load additional request fields from environment variable
+        additional_fields = self._load_additional_request_fields()
+        
         bedrock_model = BedrockModel(
             model_id=model_id,
             region_name=region,
             temperature=0.1,  # Low temperature for consistent behavior
-            max_tokens=self._get_max_tokens()
+            max_tokens=self._get_max_tokens(),
+            boto_client_config=boto_config,
+            additional_request_fields=additional_fields
         )
         
         # Create system prompt (implemented by subclasses)
@@ -177,10 +191,32 @@ class BaseNeptuneAgent(ABC):
         """Get additional tools beyond execute_neptune_query."""
         pass
     
-    @abstractmethod
     def _get_max_tokens(self) -> int:
-        """Get maximum tokens for the agent."""
-        pass
+        """Get maximum tokens for the agent from environment."""
+        return int(os.getenv('MAX_TOKENS', '4096'))  # Default to 4096 if not set
+    
+    def _load_additional_request_fields(self) -> Optional[Dict[str, Any]]:
+        """Load provider-specific additional request fields from environment variable.
+        
+        This allows different model providers to specify their own request fields
+        without hardcoding provider-specific logic in the base agent.
+        
+        Environment variable format (JSON string):
+            BEDROCK_ADDITIONAL_REQUEST_FIELDS='{"anthropic_beta": ["context-1m-2025-08-07"]}'
+        
+        Returns:
+            Dictionary of additional request fields or None
+        """
+        fields_json = os.getenv('BEDROCK_ADDITIONAL_REQUEST_FIELDS')
+        
+        if not fields_json:
+            return None
+        
+        try:
+            return json.loads(fields_json)
+        except json.JSONDecodeError as e:
+            print(f"Warning: Failed to parse BEDROCK_ADDITIONAL_REQUEST_FIELDS: {e}")
+            return None
     
     @abstractmethod
     def _process_query_results(self, query: str, query_language: str, 

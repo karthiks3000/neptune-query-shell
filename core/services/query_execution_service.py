@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Centralized query execution and export service for Neptune Query Shell."""
 
+import json
+import os
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
@@ -39,6 +41,7 @@ class QueryExecutionService:
         self.neptune_client = neptune_client
         self.csv_exporter = NeptuneCSVExporter()
         self.max_results = min(max_results, self.MEMORY_SAFE_LIMIT)  # Enforce hard limit
+        self.max_ai_chars = int(os.getenv('MAX_AI_CHARS', '50000'))  # AI context character limit
         
         # Centralized result storage - single source of truth
         self._last_complete_results: List[Dict[str, Any]] = []
@@ -48,15 +51,14 @@ class QueryExecutionService:
     async def execute_query(self, 
                            query: str, 
                            query_language: QueryLanguage = QueryLanguage.SPARQL,
-                           for_ai_context: bool = True,
-                           max_ai_results: int = 10) -> Dict[str, Any]:
+                           for_ai_context: bool = True) -> Dict[str, Any]:
         """Execute a Neptune query and manage results consistently.
         
         Args:
             query: The query to execute
             query_language: Query language to use
             for_ai_context: If True, truncate results for AI context window management
-            max_ai_results: Maximum results to return for AI context
+                          based on character count instead of record count
             
         Returns:
             Query execution results (truncated if for_ai_context=True)
@@ -97,14 +99,14 @@ class QueryExecutionService:
             }
             
             # Determine what results to return based on context
-            if for_ai_context and len(complete_results) > max_ai_results:
-                # Return truncated results for AI to prevent context overflow
-                returned_results = complete_results[:max_ai_results]
-                ai_truncated = True
+            if for_ai_context:
+                # Apply character-based truncation for AI context
+                returned_results, ai_truncated, char_count = self._truncate_by_characters(complete_results)
             else:
                 # Return complete results (up to memory limit)
                 returned_results = complete_results
                 ai_truncated = False
+                char_count = len(json.dumps(complete_results))
             
             return {
                 "success": True,
@@ -114,7 +116,10 @@ class QueryExecutionService:
                 "result_count": total_result_count,  # Original count from Neptune
                 "returned_count": len(returned_results),  # Actually returned
                 "truncated": ai_truncated or memory_truncated,  # Either AI or memory truncation
+                "ai_truncated": ai_truncated,
                 "memory_truncated": memory_truncated,
+                "character_count": char_count,
+                "character_limit": self.max_ai_chars if for_ai_context else None,
                 "memory_limit": self.max_results,
                 "execution_metadata": {
                     "status": raw_result.get("status", "success"),
@@ -249,6 +254,45 @@ class QueryExecutionService:
         self._last_query_metadata = {}
         self._result_truncated_due_to_memory = False
     
+    def _truncate_by_characters(self, results: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], bool, int]:
+        """Truncate results based on character count instead of record count.
+        
+        Args:
+            results: Complete list of results to potentially truncate
+            
+        Returns:
+            Tuple of (truncated_results, was_truncated, total_character_count)
+        """
+        if not results:
+            return [], False, 0
+        
+        truncated_results = []
+        current_char_count = 0
+        was_truncated = False
+        
+        # Always include at least one result, even if it exceeds the limit
+        for i, result in enumerate(results):
+            # Convert current result to JSON to get character count
+            result_json = json.dumps(result, default=str)  # Use default=str for non-serializable objects
+            result_char_count = len(result_json)
+            
+            # Check if adding this result would exceed the limit
+            if i > 0 and (current_char_count + result_char_count) > self.max_ai_chars:
+                # We've exceeded the limit, stop here
+                was_truncated = True
+                break
+            
+            # Add this result
+            truncated_results.append(result)
+            current_char_count += result_char_count
+            
+            # If this is the first result and it already exceeds the limit,
+            # we still include it but mark as truncated
+            if i == 0 and current_char_count > self.max_ai_chars:
+                was_truncated = True
+        
+        return truncated_results, was_truncated, current_char_count
+
     def get_memory_status(self) -> Dict[str, Any]:
         """Get current memory usage status.
         

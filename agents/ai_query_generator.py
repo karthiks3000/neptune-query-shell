@@ -78,9 +78,6 @@ class AIQueryGenerator(BaseNeptuneAgent):
         """Get additional tools beyond execute_neptune_query."""
         return [self.export_to_csv]
     
-    def _get_max_tokens(self) -> int:
-        """Get maximum tokens for the agent."""
-        return 4096
     
     def _process_query_results(self, query: str, query_language: str, 
                              results: List[Dict[str, Any]], raw_result: Dict[str, Any]) -> Dict[str, Any]:
@@ -116,11 +113,11 @@ class AIQueryGenerator(BaseNeptuneAgent):
         else:
             query_language_enum = QueryLanguage.from_string(query_language)
         
-        # Use shared service with AI context truncation
+        # Use shared service with AI context truncation (now character-based)
         return await self.query_service.execute_query(
             query, 
             query_language_enum, 
-            for_ai_context=True  # Truncate for AI context window
+            for_ai_context=True  # Truncate based on character count
         )
 
     @tool 
@@ -156,8 +153,26 @@ The user wants to query the Neptune database with this natural language request:
 You MUST follow this process:
 1. Generate an appropriate {self.query_language.value.upper()} query for this request
 2. Execute the query using the execute_neptune_query tool to get REAL results
-3. Analyze the ACTUAL results returned by the tool
-4. Respond in JSON format with the real data
+3. If the user requests CSV export, use the export_to_csv tool
+4. Analyze the ACTUAL results returned by the query tool
+5. Respond in JSON format with the real data
+
+CRITICAL JSON FORMAT REQUIREMENTS:
+- The "results" field MUST always contain the actual query results as a list of objects
+- NEVER put export messages or strings in the "results" field
+- If you export to CSV, mention it in the "insights" field, not in "results"
+- The "results" field must be: [{{"field1": "value1", "field2": "value2"}}, ...]
+- IMPORTANT: Even if you export many records to CSV, only include a SAMPLE of results in the JSON response (typically 5-10 records) to keep the response readable
+- Use the actual results returned by execute_neptune_query (which are already truncated for display)
+
+Example correct format:
+{{
+  "query": "SELECT ...",
+  "query_language": "sparql", 
+  "results": [{{"standard": "AK.1", "text": "Standard text"}}, {{"standard": "AK.2", "text": "Other text"}}],
+  "result_count": 120,
+  "insights": "Query executed successfully returning 120 total records. Sample of results shown above. Complete dataset exported to CSV file: filename.csv"
+}}
 
 Do NOT make up or fabricate any results. Use only the actual data returned by the execute_neptune_query tool.
 """
@@ -206,6 +221,9 @@ Do NOT make up or fabricate any results. Use only the actual data returned by th
         print("─" * 50)
         
         full_response_text = ""
+        tool_execution_count = {}
+        current_tool_message = ""
+        seen_tool_use_ids = set()
         
         try:
             # Use streaming async iterator to show AI thinking
@@ -213,22 +231,68 @@ Do NOT make up or fabricate any results. Use only the actual data returned by th
             
             async for event in agent_stream:
                 if "data" in event:
+                    # Clear any tool message when AI starts generating text
+                    if current_tool_message:
+                        # Clear the line and move to next line
+                        print(f"\r{' ' * len(current_tool_message)}\r", end="", flush=True)
+                        current_tool_message = ""
+                        print()  # Add newline after clearing tool message
+                    
                     # AI is generating text - show it live
                     text_chunk = event["data"]
                     print(text_chunk, end="", flush=True)
                     full_response_text += text_chunk
                     
                 elif "current_tool_use" in event and event["current_tool_use"].get("name"):
-                    # AI is using a tool - show which one
+                    # Get tool use ID to track unique tool executions
+                    tool_use_id = event["current_tool_use"].get("toolUseId")
                     tool_name = event["current_tool_use"]["name"]
-                    if tool_name == "execute_neptune_query":
-                        print(f"\n\n🔍 Executing Neptune query...")
-                    elif tool_name == "export_to_csv":
-                        print(f"\n\n💾 Exporting to CSV...")
-                    else:
-                        print(f"\n\n🔧 Using tool: {tool_name}")
+                    
+                    # Only show message for the FIRST time we see this tool use ID
+                    if tool_use_id and tool_use_id not in seen_tool_use_ids:
+                        seen_tool_use_ids.add(tool_use_id)
+                        tool_execution_count[tool_name] = tool_execution_count.get(tool_name, 0) + 1
+                        
+                        # Build the new message
+                        if tool_name == "execute_neptune_query":
+                            count = tool_execution_count[tool_name]
+                            if count == 1:
+                                new_message = "🔍 Executing Neptune query..."
+                            else:
+                                new_message = f"🔍 Executing Neptune query ({count})..."
+                        elif tool_name == "export_to_csv":
+                            new_message = "💾 Exporting to CSV..."
+                        else:
+                            new_message = f"🔧 Using tool: {tool_name}..."
+                        
+                        # If we already have a tool message, replace it on the same line
+                        if current_tool_message:
+                            print(f"\r{new_message}", end="", flush=True)
+                        else:
+                            # First tool use - add newline before it
+                            print(f"\n{new_message}", end="", flush=True)
+                        
+                        current_tool_message = new_message
+            
+            # Clear any remaining tool message
+            if current_tool_message:
+                print(f"\r{' ' * len(current_tool_message)}\r", end="", flush=True)
+                print()  # Move to next line
                         
             print("\n" + "─" * 50)
+            
+            # Show summary of tool usage
+            if tool_execution_count:
+                print("🔧 Tools used:")
+                for tool, count in tool_execution_count.items():
+                    if tool == "execute_neptune_query":
+                        print(f"   • Neptune queries: {count}")
+                    elif tool == "export_to_csv":
+                        print(f"   • CSV exports: {count}")
+                    else:
+                        print(f"   • {tool}: {count}")
+                print()
+            
             print("🤖 Processing complete!\n")
             
             # Extract JSON from the full response
@@ -248,6 +312,10 @@ Do NOT make up or fabricate any results. Use only the actual data returned by th
             )
             
         except Exception as e:
+            # Clear any remaining tool message on error
+            if current_tool_message:
+                print(f"\r{' ' * len(current_tool_message)}\r", end="", flush=True)
+                
             print(f"\n❌ Streaming failed: {str(e)}")
             # Return error result
             return QueryResult(
