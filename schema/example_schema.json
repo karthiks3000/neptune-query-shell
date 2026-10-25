@@ -1,0 +1,140 @@
+{
+  "database_info": {
+    "name": "Air Routes",
+    "description": "Airports, the countries and continents that contain them, and the routes between them. Modeled on the air-routes graph used in the Neptune graph notebook samples.",
+    "query_languages_supported": ["SPARQL", "Gremlin", "OpenCypher"]
+  },
+  "vertices": [
+    {
+      "label": "airport",
+      "description": "An airport",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "IATA airport code",
+          "examples": ["AUS", "LHR", "SIN"]
+        },
+        "icao": {
+          "type": "string",
+          "description": "ICAO airport code",
+          "examples": ["KAUS", "EGLL", "WSSS"]
+        },
+        "desc": {
+          "type": "string",
+          "description": "Airport name",
+          "examples": ["Austin Bergstrom International Airport", "London Heathrow"]
+        },
+        "city": {
+          "type": "string",
+          "description": "City the airport serves",
+          "examples": ["Austin", "London", "Singapore"]
+        },
+        "country": {
+          "type": "string",
+          "description": "ISO country code",
+          "examples": ["US", "GB", "SG"]
+        },
+        "runways": {
+          "type": "number",
+          "description": "Number of runways",
+          "examples": [2, 3]
+        },
+        "elev": {
+          "type": "number",
+          "description": "Elevation in feet",
+          "examples": [542, 83]
+        }
+      }
+    },
+    {
+      "label": "country",
+      "description": "A country",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "ISO country code",
+          "examples": ["US", "GB"]
+        },
+        "desc": {
+          "type": "string",
+          "description": "Country name",
+          "examples": ["United States", "United Kingdom"]
+        }
+      }
+    },
+    {
+      "label": "continent",
+      "description": "A continent",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Two-letter continent code",
+          "examples": ["NA", "EU", "AS"]
+        },
+        "desc": {
+          "type": "string",
+          "description": "Continent name",
+          "examples": ["North America", "Europe", "Asia"]
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "label": "route",
+      "description": "A scheduled route from one airport to another",
+      "from_vertex": "airport",
+      "to_vertex": "airport",
+      "properties": {
+        "dist": {
+          "type": "number",
+          "description": "Distance in miles",
+          "examples": [1520, 4890]
+        }
+      }
+    },
+    {
+      "label": "contains",
+      "description": "A country or continent contains an airport",
+      "from_vertex": "country",
+      "to_vertex": "airport"
+    }
+  ],
+  "rdf_namespaces": {
+    "resources": "http://example.org/air-routes/resource/",
+    "properties": "http://example.org/air-routes/property/",
+    "classes": "http://example.org/air-routes/class/"
+  },
+  "query_examples": {
+    "sparql": [
+      {
+        "description": "Airports in a city",
+        "query": "SELECT ?airport ?code WHERE { ?airport a <http://example.org/air-routes/class/airport> ; <http://example.org/air-routes/property/city> \"London\" ; <http://example.org/air-routes/property/code> ?code . }"
+      },
+      {
+        "description": "Ten airports with the most outgoing routes",
+        "query": "SELECT ?code (COUNT(?to) AS ?routes) WHERE { ?from <http://example.org/air-routes/property/code> ?code ; <http://example.org/air-routes/property/route> ?to . } GROUP BY ?code ORDER BY DESC(?routes) LIMIT 10"
+      }
+    ],
+    "gremlin": [
+      {
+        "description": "Airports in a city",
+        "query": "g.V().hasLabel('airport').has('city', 'London').values('code')"
+      },
+      {
+        "description": "Ten airports with the most outgoing routes",
+        "query": "g.V().hasLabel('airport').project('code', 'routes').by('code').by(out('route').count()).order().by(select('routes'), desc).limit(10)"
+      }
+    ],
+    "opencypher": [
+      {
+        "description": "Airports in a city",
+        "query": "MATCH (a:airport {city: 'London'}) RETURN a.code, a.desc"
+      },
+      {
+        "description": "Ten airports with the most outgoing routes",
+        "query": "MATCH (a:airport)-[:route]->() RETURN a.code AS code, count(*) AS routes ORDER BY routes DESC LIMIT 10"
+      }
+    ]
+  }
+}
